@@ -3,7 +3,7 @@ const http = require('http');
 const socketIO = require('socket.io');
 const path = require('path');
 
-class Server {
+class RTCServer {
   constructor() {
     this.activeSockets = [];
     this.DEFAULT_PORT = 5000;
@@ -29,6 +29,52 @@ class Server {
       res.sendFile(path.join(__dirname, "../public/index.html"));
     });
   }
+
+  // handleSocketConnection() {
+  //   this.io.on("connection", socket => {
+  //     if (!this.activeSockets.includes(socket.id)) {
+  //       this.activeSockets.push(socket.id);
+
+  //       console.log('ActiveSockets: ', this.activeSockets);
+
+  //       socket.emit("refresh-users", {
+  //         users: this.activeSockets.filter(id => id !== socket.id)
+  //       });
+
+  //       socket.broadcast.emit("refresh-users", {
+  //         users: [socket.id]
+  //       });
+  //     }
+
+  //     socket.on("init-call", (data) => {
+  //       socket.to(data.to).emit("incoming-call", {
+  //         offer: data.offer,
+  //         userId: socket.id
+  //       });
+  //     });
+
+  //     socket.on("call-response", ({ answer, target }) => {
+  //       socket.to(target).emit("call-answered", {
+  //         answer: answer,
+  //         from: socket.id
+  //       });
+  //     });
+
+  //     socket.on("decline-call", (data) => {
+  //       socket.to(data.caller).emit("call-declined", {
+  //         userId: socket.id
+  //       });
+  //     });
+
+  //     socket.on("disconnect", () => {
+  //       this.activeSockets = this.activeSockets.filter(id => id !== socket.id);
+  //       socket.broadcast.emit("user-left", {
+  //         userId: socket.id
+  //       });
+  //     });
+  //   });
+  // }
+
 
   handleSocketConnection() {
     this.io.on("connection", socket => {
@@ -88,4 +134,4 @@ class Server {
   }
 }
 
-module.exports = Server;
+module.exports = RTCServer;

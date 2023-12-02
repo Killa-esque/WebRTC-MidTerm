@@ -1,48 +1,42 @@
-let isAlreadyCalling = false;
-let getCalled = false;
+let callInProgress = false;
+let incomingCall = false;
 
-const existingCalls = [];
+const currentCalls = [];
 
 const { RTCPeerConnection, RTCSessionDescription } = window;
 
-const peerConnection = new RTCPeerConnection();
+const connection = new RTCPeerConnection();
 
-function unselectUsersFromList() {
-  const alreadySelectedUser = document.querySelectorAll(
-    ".active-user.active-user--selected"
-  );
-
-  alreadySelectedUser.forEach(el => {
-    el.setAttribute("class", "active-user");
+function deselectActiveUsers() {
+  document.querySelectorAll(".active-user.active-user--selected").forEach(user => {
+    user.className = "active-user";
   });
 }
 
-function createUserItemContainer(socketId) {
-  const userContainerEl = document.createElement("div");
+function generateUserElement(socketId) {
+  const userElement = document.createElement("div");
+  const nameElement = document.createElement("p");
 
-  const usernameEl = document.createElement("p");
+  userElement.className = "active-user";
+  userElement.id = socketId;
+  nameElement.className = "username";
+  nameElement.innerHTML = `Socket: ${socketId}`;
 
-  userContainerEl.setAttribute("class", "active-user");
-  userContainerEl.setAttribute("id", socketId);
-  usernameEl.setAttribute("class", "username");
-  usernameEl.innerHTML = `Socket: ${socketId}`;
+  userElement.appendChild(nameElement);
 
-  userContainerEl.appendChild(usernameEl);
-
-  userContainerEl.addEventListener("click", () => {
-    unselectUsersFromList();
-    userContainerEl.setAttribute("class", "active-user active-user--selected");
-    const talkingWithInfo = document.getElementById("talking-with-info");
-    talkingWithInfo.innerHTML = `Talking with: "Socket: ${socketId}"`;
-    callUser(socketId);
+  userElement.addEventListener("click", () => {
+    deselectActiveUsers();
+    userElement.className = "active-user active-user--selected";
+    document.getElementById("talking-with-info").innerHTML = `Talking with: "Socket: ${socketId}"`;
+    initiateCall(socketId);
   });
 
-  return userContainerEl;
+  return userElement;
 }
 
-async function callUser(socketId) {
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(new RTCSessionDescription(offer));
+async function initiateCall(socketId) {
+  const offer = await connection.createOffer();
+  await connection.setLocalDescription(new RTCSessionDescription(offer));
 
   socket.emit("call-user", {
     offer,
@@ -50,15 +44,13 @@ async function callUser(socketId) {
   });
 }
 
-function updateUserList(socketIds) {
-  const activeUserContainer = document.getElementById("active-user-container");
+function refreshUserList(socketIds) {
+  const userContainer = document.getElementById("active-user-container");
 
-  socketIds.forEach(socketId => {
-    const alreadyExistingUser = document.getElementById(socketId);
-    if (!alreadyExistingUser) {
-      const userContainerEl = createUserItemContainer(socketId);
-
-      activeUserContainer.appendChild(userContainerEl);
+  socketIds.forEach(id => {
+    if (!document.getElementById(id)) {
+      const element = generateUserElement(id);
+      userContainer.appendChild(element);
     }
   });
 }
@@ -66,65 +58,55 @@ function updateUserList(socketIds) {
 const socket = io.connect("localhost:5000");
 
 socket.on("update-user-list", ({ users }) => {
-  updateUserList(users);
+  refreshUserList(users);
 });
 
 socket.on("remove-user", ({ socketId }) => {
-  const elToRemove = document.getElementById(socketId);
-
-  if (elToRemove) {
-    elToRemove.remove();
+  const userElement = document.getElementById(socketId);
+  if (userElement) {
+    userElement.remove();
   }
 });
 
 socket.on("call-made", async data => {
-  if (getCalled) {
-    const confirmed = confirm(
-      `User "Socket: ${data.socket}" wants to call you. Do accept this call?`
-    );
+  if (incomingCall) {
+    const acceptCall = confirm(`User "Socket: ${data.socket}" is calling. Accept?`);
 
-    if (!confirmed) {
-      socket.emit("reject-call", {
-        from: data.socket
-      });
-
+    if (!acceptCall) {
+      socket.emit("reject-call", { from: data.socket });
       return;
     }
   }
 
-  await peerConnection.setRemoteDescription(
-    new RTCSessionDescription(data.offer)
-  );
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(new RTCSessionDescription(answer));
+  await connection.setRemoteDescription(new RTCSessionDescription(data.offer));
+  const answer = await connection.createAnswer();
+  await connection.setLocalDescription(new RTCSessionDescription(answer));
 
   socket.emit("make-answer", {
     answer,
     to: data.socket
   });
-  getCalled = true;
+  incomingCall = true;
 });
 
 socket.on("answer-made", async data => {
-  await peerConnection.setRemoteDescription(
-    new RTCSessionDescription(data.answer)
-  );
+  await connection.setRemoteDescription(new RTCSessionDescription(data.answer));
 
-  if (!isAlreadyCalling) {
-    callUser(data.socket);
-    isAlreadyCalling = true;
+  if (!callInProgress) {
+    initiateCall(data.socket);
+    callInProgress = true;
   }
 });
 
 socket.on("call-rejected", data => {
   alert(`User: "Socket: ${data.socket}" rejected your call.`);
-  unselectUsersFromList();
+  deselectActiveUsers();
 });
 
-peerConnection.ontrack = function({ streams: [stream] }) {
+connection.ontrack = event => {
   const remoteVideo = document.getElementById("remote-video");
   if (remoteVideo) {
-    remoteVideo.srcObject = stream;
+    remoteVideo.srcObject = event.streams[0];
   }
 };
 
@@ -136,9 +118,7 @@ navigator.getUserMedia(
       localVideo.srcObject = stream;
     }
 
-    stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+    stream.getTracks().forEach(track => connection.addTrack(track, stream));
   },
-  error => {
-    console.warn(error.message);
-  }
+  error => console.warn(error.message)
 );
